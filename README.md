@@ -1,5 +1,7 @@
 # Rate Limiter as a Service
 
+[![CI](https://github.com/benjaminserrano23/ratelimiter-go/actions/workflows/ci.yml/badge.svg)](https://github.com/benjaminserrano23/ratelimiter-go/actions/workflows/ci.yml)
+
 HTTP microservice in Go that exposes rate limiting as an external API. Supports Token Bucket and Sliding Window Log algorithms with in-memory storage.
 
 ## Features
@@ -9,7 +11,9 @@ HTTP microservice in Go that exposes rate limiting as an external API. Supports 
 - **REST API** — `POST /check` to verify rate limits, `GET /metrics` for stats
 - **Per-key limiting** — each key (user, IP, API key) has independent limits
 - **YAML config** — server port and storage backend
-- **In-memory store** — thread-safe with `sync.RWMutex`
+- **In-memory store** — thread-safe with atomic operations
+- **Automatic cleanup** — background goroutine sweeps expired keys every 60s
+- **Graceful shutdown** — handles SIGINT/SIGTERM with in-flight request draining
 
 ## Endpoints
 

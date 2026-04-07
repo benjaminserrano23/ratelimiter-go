@@ -9,6 +9,12 @@ type Entry struct {
 	Requests  []time.Time // for sliding window
 }
 
+// TokenBucketResult holds the result of an atomic token bucket operation.
+type TokenBucketResult struct {
+	Allowed   bool
+	Remaining float64
+}
+
 // Store defines the interface for rate limit state storage.
 type Store interface {
 	// GetTokenBucket returns the current token count and last refill time.
@@ -16,10 +22,13 @@ type Store interface {
 	// SetTokenBucket updates the token bucket state.
 	SetTokenBucket(key string, tokens float64, lastRefill time.Time)
 
+	// ConsumeToken atomically checks and consumes a token. Thread-safe.
+	ConsumeToken(key string, limit int, refillRate float64) TokenBucketResult
+
 	// GetSlidingWindow returns request timestamps within the window.
 	GetSlidingWindow(key string, windowStart time.Time) []time.Time
-	// AddSlidingWindow records a new request timestamp.
-	AddSlidingWindow(key string, now time.Time)
+	// AddSlidingWindowIfAllowed atomically checks count and adds a timestamp if under limit.
+	AddSlidingWindowIfAllowed(key string, windowStart time.Time, now time.Time, limit int) (allowed bool, count int)
 
 	// GetMetrics returns total requests and denied requests per key.
 	GetMetrics() map[string][2]int64

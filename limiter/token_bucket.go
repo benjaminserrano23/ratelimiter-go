@@ -19,33 +19,12 @@ func NewTokenBucket(s store.Store) *TokenBucket {
 // limit: max tokens (burst size), window: refill period for all tokens.
 func (tb *TokenBucket) Allow(key string, limit int, window time.Duration) Result {
 	now := time.Now()
-	tokens, lastRefill, exists := tb.store.GetTokenBucket(key)
+	refillRate := float64(limit) / window.Seconds()
 
-	if !exists {
-		// First request — initialize with limit-1 tokens (this request uses one)
-		tb.store.SetTokenBucket(key, float64(limit-1), now)
-		tb.store.IncrMetrics(key, false)
-		return Result{
-			Allowed:   true,
-			Remaining: limit - 1,
-			ResetAt:   now.Add(window),
-		}
-	}
+	result := tb.store.ConsumeToken(key, limit, refillRate)
+	tb.store.IncrMetrics(key, !result.Allowed)
 
-	// Calculate tokens to add based on elapsed time
-	elapsed := now.Sub(lastRefill)
-	refillRate := float64(limit) / window.Seconds() // tokens per second
-	tokens += elapsed.Seconds() * refillRate
-
-	// Cap at max
-	if tokens > float64(limit) {
-		tokens = float64(limit)
-	}
-
-	if tokens < 1 {
-		// Denied
-		tb.store.SetTokenBucket(key, tokens, now)
-		tb.store.IncrMetrics(key, true)
+	if !result.Allowed {
 		return Result{
 			Allowed:   false,
 			Remaining: 0,
@@ -53,13 +32,9 @@ func (tb *TokenBucket) Allow(key string, limit int, window time.Duration) Result
 		}
 	}
 
-	tokens--
-	tb.store.SetTokenBucket(key, tokens, now)
-	tb.store.IncrMetrics(key, false)
-
 	return Result{
 		Allowed:   true,
-		Remaining: int(tokens),
+		Remaining: int(result.Remaining),
 		ResetAt:   now.Add(window),
 	}
 }

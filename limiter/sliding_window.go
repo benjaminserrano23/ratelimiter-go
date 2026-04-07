@@ -20,31 +20,20 @@ func (sw *SlidingWindow) Allow(key string, limit int, window time.Duration) Resu
 	now := time.Now()
 	windowStart := now.Add(-window)
 
-	// Get requests within the window
-	requests := sw.store.GetSlidingWindow(key, windowStart)
+	allowed, count := sw.store.AddSlidingWindowIfAllowed(key, windowStart, now, limit)
+	sw.store.IncrMetrics(key, !allowed)
 
-	if len(requests) >= limit {
-		// Denied
-		sw.store.IncrMetrics(key, true)
-		// Reset at = oldest request in window + window duration
-		resetAt := now.Add(window)
-		if len(requests) > 0 {
-			resetAt = requests[0].Add(window)
-		}
+	if !allowed {
 		return Result{
 			Allowed:   false,
 			Remaining: 0,
-			ResetAt:   resetAt,
+			ResetAt:   now.Add(window),
 		}
 	}
 
-	// Allowed — record the request
-	sw.store.AddSlidingWindow(key, now)
-	sw.store.IncrMetrics(key, false)
-
 	return Result{
 		Allowed:   true,
-		Remaining: limit - len(requests) - 1,
+		Remaining: limit - count,
 		ResetAt:   now.Add(window),
 	}
 }

@@ -1,9 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/benjaminserrano23/ratelimiter-go/config"
 	"github.com/benjaminserrano23/ratelimiter-go/handler"
@@ -16,13 +21,8 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	var s store.Store
-	switch cfg.Store.Type {
-	case "memory":
-		s = store.NewMemoryStore()
-	default:
-		s = store.NewMemoryStore()
-	}
+	s := store.NewMemoryStore()
+	defer s.Close()
 
 	h := handler.New(s)
 
@@ -32,6 +32,27 @@ func main() {
 	mux.HandleFunc("/health", h.Health)
 
 	addr := ":" + cfg.Server.Port
-	fmt.Printf("ratelimiter-go listening on %s\n", addr)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	server := &http.Server{Addr: addr, Handler: mux}
+
+	// Graceful shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		fmt.Printf("ratelimiter-go listening on %s\n", addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	fmt.Println("\nshutting down gracefully...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("shutdown error: %v", err)
+	}
+	fmt.Println("server stopped")
 }

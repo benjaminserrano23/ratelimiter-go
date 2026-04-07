@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/benjaminserrano23/ratelimiter-go/actions/workflows/ci.yml/badge.svg)](https://github.com/benjaminserrano23/ratelimiter-go/actions/workflows/ci.yml)
 
-HTTP microservice in Go that exposes rate limiting as an external API. Supports Token Bucket and Sliding Window Log algorithms with in-memory storage.
+HTTP microservice in Go that exposes rate limiting as an external API. Supports Token Bucket and Sliding Window Log algorithms with pluggable storage backends (in-memory or Redis).
 
 ## Features
 
@@ -10,9 +10,11 @@ HTTP microservice in Go that exposes rate limiting as an external API. Supports 
 - **Sliding Window Log** — precise request counting within a time window
 - **REST API** — `POST /check` to verify rate limits, `GET /metrics` for stats
 - **Per-key limiting** — each key (user, IP, API key) has independent limits
-- **YAML config** — server port and storage backend
-- **In-memory store** — thread-safe with atomic operations
-- **Automatic cleanup** — background goroutine sweeps expired keys every 60s
+- **Redis backend** — Lua scripts for atomic operations, auto-expiring keys
+- **In-memory backend** — thread-safe with atomic operations, zero dependencies
+- **Docker ready** — multi-stage Dockerfile, works standalone or with Docker Compose
+- **YAML + env config** — `config.yaml` with `STORE_TYPE`, `REDIS_URL`, `PORT` overrides
+- **Automatic cleanup** — background goroutine sweeps expired keys (memory store)
 - **Graceful shutdown** — handles SIGINT/SIGTERM with in-flight request draining
 
 ## Endpoints
@@ -48,12 +50,12 @@ Response (200 or 429):
 ## Usage
 
 ```bash
-# Build and run
+# Build and run (in-memory store)
 go build -o ratelimiter .
 ./ratelimiter
 
-# Or run directly
-go run .
+# Run with Redis
+STORE_TYPE=redis REDIS_URL=localhost:6379 ./ratelimiter
 
 # Test a request
 curl -X POST http://localhost:8080/check \
@@ -62,6 +64,17 @@ curl -X POST http://localhost:8080/check \
 
 # Check metrics
 curl http://localhost:8080/metrics
+```
+
+## Docker
+
+```bash
+# Standalone
+docker build -t ratelimiter .
+docker run -p 8080:8080 ratelimiter
+
+# With Redis (via goproxy's docker-compose)
+# See github.com/benjaminserrano23/goproxy for the full stack
 ```
 
 ## Configuration
@@ -73,20 +86,40 @@ server:
   port: "8080"
 
 store:
-  type: "memory"
+  type: "memory"    # or "redis"
+  redis_url: "localhost:6379"
 ```
+
+All values can be overridden with environment variables:
+
+| Env var | Description |
+|---------|-------------|
+| `PORT` | Server port |
+| `STORE_TYPE` | `memory` or `redis` |
+| `REDIS_URL` | Redis address (host:port) |
+
+## Architecture
+
+```
+POST /check → handler → limiter (token_bucket / sliding_window) → store (memory / redis)
+                ↓
+            GET /metrics → store.GetMetrics()
+```
+
+The `Store` interface abstracts the storage backend:
+- **Memory**: `sync.Mutex` + Go maps, background cleanup goroutine
+- **Redis**: Lua scripts for atomic check-and-consume, sorted sets for sliding window, auto-TTL
 
 ## Development
 
 ```bash
-# Run tests
-go test ./...
-
-# Run with verbose output
-go test ./... -v
+go test ./...        # Run tests
+go test ./... -v     # Verbose
+go test ./... -race  # Race detector (Linux/macOS)
 ```
 
 ## Tech stack
 
 - Go (standard library `net/http`)
+- `github.com/redis/go-redis/v9` (Redis client)
 - `gopkg.in/yaml.v3` (config parsing)

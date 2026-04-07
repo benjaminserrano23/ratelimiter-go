@@ -21,7 +21,19 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	s := store.NewMemoryStore()
+	var s store.Store
+	switch cfg.Store.Type {
+	case "redis":
+		rs, err := store.NewRedisStore(cfg.Store.RedisURL)
+		if err != nil {
+			log.Fatalf("failed to connect to redis: %v", err)
+		}
+		s = rs
+		fmt.Println("using redis store:", cfg.Store.RedisURL)
+	default:
+		s = store.NewMemoryStore()
+		fmt.Println("using in-memory store")
+	}
 	defer s.Close()
 
 	h := handler.New(s)

@@ -38,6 +38,17 @@ func Load(path string) (*Config, error) {
 		cfg.Store.Type = "memory"
 	}
 
+	// Environment variable overrides (for Docker/production)
+	if t := os.Getenv("STORE_TYPE"); t != "" {
+		cfg.Store.Type = t
+	}
+	if u := os.Getenv("REDIS_URL"); u != "" {
+		cfg.Store.RedisURL = u
+	}
+	if p := os.Getenv("PORT"); p != "" {
+		cfg.Server.Port = p
+	}
+
 	return cfg, nil
 }
 

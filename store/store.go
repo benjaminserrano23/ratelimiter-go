@@ -34,4 +34,7 @@ type Store interface {
 	GetMetrics() map[string][2]int64
 	// IncrMetrics increments total and optionally denied count.
 	IncrMetrics(key string, denied bool)
+
+	// Close releases resources (background goroutines, connections, etc.).
+	Close()
 }
